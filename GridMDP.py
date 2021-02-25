@@ -4,7 +4,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 class GridMDP:
     def __init__(self, w, h, c, r, p):
-        self.s = (0, 0)
+        self.s = (h-1,w-1)
         self.A = '←↑→↓.'
         self.w = w
         self.h = h
@@ -17,6 +17,9 @@ class GridMDP:
             self.R[s] = 1
         for s in p:
             self.R[s] = -1
+
+    def action(self,a):
+        self.s = self.T(a,self.s)
 
     def T(self,a,s): # Transition function
         if a == '←':
@@ -56,7 +59,7 @@ class Agent:
                     if s in self.mdp.S_term:
                         V_[s] = self.mdp.R[s]
                         continue
-                    V_[s] = max([self.mdp.R[s] + self.gamma*self.V[self.mdp.T(a,s)] for a in self.mdp.A])
+                    V_[s] = max([self.q(s,a) for a in self.mdp.A])
 
     def extract_policy(self):
         for j in range(self.mdp.h):
@@ -104,24 +107,61 @@ class Agent:
                             self.P[s] = a
                             unchanged = False
 
+    def FVMC_evaluation(self, episodes):
+        N = 0.000000000001*np.ones((mdp.h,mdp.w)) # Avoid zero division
+        S = np.zeros((mdp.h,mdp.w))
+
+        def discounted_sum(rewards, k):
+            if k == len(rewards):
+                return 0
+            return rewards[k] + self.gamma * discounted_sum(rewards, k + 1)
+
+        for i in range(episodes):
+            # Episode
+            rewards = []
+            states = []
+            while True:
+                if self.mdp.s not in states: # Increment first-visit counter
+                    N[self.mdp.s] += 1
+
+                rewards.append(self.mdp.R[self.mdp.s]) # Add to reward sequence
+                states.append(self.mdp.s) # Add to state sequence
+
+                if self.mdp.s in self.mdp.S_term:
+                    break
+
+                self.mdp.action(self.P[self.mdp.s]) # Agent takes action according to policy
+
+            for state in list(set(states)): # Find first visit
+                S[state] += discounted_sum(rewards, states.index(state))
+
+            self.mdp.s = (np.random.randint(self.mdp.h),np.random.randint(self.mdp.w)) # Reinitialize in random state
+
+        return np.divide(S,N)
+
 w = 5
 h = 5
 
 default_r = -0.1
 
-gamma = 0.0
+gamma = 0.8
 
 plot_policy = True
-use_value_iter = False
+use_value_iter = True
+compare_mc = True
 
-maze = [(i,1) for i in range(h-1)] + [(i,3) for i in range(1,h)] + [(i,5) for i in range(1,h-1)] + [(1,4)]
+maze = [(i,1) for i in range(h-1)] + [(i,3) for i in range(1,h)] + [(i,5) for i in range(1,h-1)] + [(1,4)] # 7x7 minimum
 
-mdp = GridMDP(w,h,default_r, [(0,0)], [])
+mdp = GridMDP(w,h,default_r, [(0,0)], [(2,2)])
 a = Agent(mdp,gamma)
 
 if use_value_iter:
     a.value_iteration(1000)
     a.extract_policy()
+    if compare_mc:
+        print("True value function:\n", a.V)
+        print()
+        print("Monte Carlo estimate:\n", a.FVMC_evaluation(100))
 else:
     a.policy_iteration() # TODO: Something wrong with value function, myopic policy doesn't try to go to reward even though only 1 step away... specifically wrong with reward eval?
 
@@ -129,8 +169,8 @@ rg_map = LinearSegmentedColormap.from_list("rg", [(1,0,0), (1,1,1), (0,1,0)])
 scale = max(abs(np.max(a.V)), abs(np.min(a.V)))
 
 plt.pcolormesh(np.flipud(a.V), cmap=rg_map, vmax=scale, vmin=-scale)
-plt.xticks(np.arange(0,mdp.w,1))
-plt.yticks(np.arange(0,mdp.h,1))
+plt.xticks(np.arange(0,mdp.w+1,1))
+plt.yticks(np.arange(0,mdp.h+1,1))
 plt.grid()
 
 for y in range(mdp.h):
