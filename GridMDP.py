@@ -139,6 +139,23 @@ class Agent:
 
         return np.divide(S,N)
 
+    def TD_evaluation(self, updates, alpha):
+        V_ = 0.5*np.ones((self.mdp.h,self.mdp.w))
+
+        for i in range(updates):
+            for s in self.mdp.S_term: # Maintain terminal values
+                V_[s] = self.mdp.R[s]
+            state = self.mdp.s # Store previous state
+            Vt = V_[state] # Store previous value estimate
+            self.mdp.action(self.P[state]) # Take action according to policy
+            new_state = self.mdp.s
+            V_[state] += alpha * (self.mdp.R[state] + self.gamma*V_[new_state] - Vt) # TD update
+
+            if new_state in self.mdp.S_term:
+                self.mdp.s = (np.random.randint(self.mdp.h),np.random.randint(self.mdp.w))
+        return V_
+
+
 w = 5
 h = 5
 
@@ -148,7 +165,8 @@ gamma = 0.8
 
 plot_policy = True
 use_value_iter = True
-compare_mc = True
+compare_mc = False
+compare_td = True
 
 maze = [(i,1) for i in range(h-1)] + [(i,3) for i in range(1,h)] + [(i,5) for i in range(1,h-1)] + [(1,4)] # 7x7 minimum
 
@@ -158,13 +176,16 @@ a = Agent(mdp,gamma)
 if use_value_iter:
     a.value_iteration(1000)
     a.extract_policy()
+    print("True value function:\n", a.V)
+    print()
     if compare_mc:
-        print("True value function:\n", a.V)
-        print()
         print("Monte Carlo estimate:\n", a.FVMC_evaluation(100))
+        print()
+    if compare_td:
+        print("TD estimate:\n", a.TD_evaluation(5000, 0.1))
+        print()
 else:
-    a.policy_iteration() # TODO: Something wrong with value function, myopic policy doesn't try to go to reward even though only 1 step away... specifically wrong with reward eval?
-
+    a.policy_iteration()
 rg_map = LinearSegmentedColormap.from_list("rg", [(1,0,0), (1,1,1), (0,1,0)])
 scale = max(abs(np.max(a.V)), abs(np.min(a.V)))
 
